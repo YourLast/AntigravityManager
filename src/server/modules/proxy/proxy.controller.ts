@@ -1,10 +1,12 @@
-import { Controller, Get, Post, Body, Res, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Body, Res, HttpStatus, UseGuards } from '@nestjs/common';
 import { FastifyReply } from 'fastify';
 import { ProxyService } from './proxy.service';
 import { Observable } from 'rxjs';
 import { OpenAIChatRequest, AnthropicChatRequest } from './interfaces/request-interfaces';
+import { ProxyGuard } from './proxy.guard';
 
 @Controller('v1')
+@UseGuards(ProxyGuard)
 export class ProxyController {
   constructor(private readonly proxyService: ProxyService) {}
 

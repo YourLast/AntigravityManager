@@ -105,6 +105,7 @@ i18n
               default: 'Default',
               restoreDefaults: 'Restore Defaults',
             },
+
             examples: {
               title: 'Usage Examples',
               description: 'Example commands to call the local API proxy.',
@@ -378,6 +379,7 @@ i18n
               default: '默认',
               restoreDefaults: '恢复默认配置',
             },
+
             examples: {
               title: '使用示例',
               description: '调用本地 API 代理的示例命令。',
@@ -544,6 +546,10 @@ i18n
               api_key: 'API 密钥',
               auto_start: '随应用启动',
               auto_start_desc: '应用启动时自动启动代理服务',
+              local_access: '局域网访问:',
+              no_token_warning: '⚠️ 未设置 API 密钥。服务对公网开放！',
+              show_key: '显示密钥',
+              hide_key: '隐藏密钥',
             },
             mapping: {
               title: '模型映射',

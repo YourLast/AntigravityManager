@@ -222,7 +222,10 @@ app
       const config = ConfigManager.loadConfig();
       if (config.proxy?.auto_start) {
         const port = config.proxy?.port || 8045;
-        await bootstrapNestServer(port);
+        // Default to a valid ProxyConfig object if null, although loadConfig ensures defaults
+        if (config.proxy) {
+          await bootstrapNestServer(config.proxy);
+        }
         logger.info(`NestJS Proxy: Auto-started on port ${port}`);
       }
 

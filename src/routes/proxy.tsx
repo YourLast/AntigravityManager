@@ -4,6 +4,8 @@
  */
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
+import { useQuery } from '@tanstack/react-query';
+import { ipc } from '@/ipc/manager';
 import { useState, useEffect } from 'react';
 import { useAppConfig } from '@/hooks/useAppConfig';
 import { ProxyConfig } from '@/types/config';
@@ -29,6 +31,8 @@ import {
   BrainCircuit,
   Code,
   Terminal,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import {
   Dialog,
@@ -43,9 +47,19 @@ function ProxyPage() {
   const { t } = useTranslation();
   const { config, isLoading, saveConfig } = useAppConfig();
 
+  const { data: localIp } = useQuery({
+    queryKey: ['system', 'localIp'],
+    queryFn: async () => {
+      // IPC might not be ready on first render, handled by query retry or lazy loading implication
+      // But ipc is imported statically now.
+      return (await ipc.client.system.get_local_ip()) as string;
+    },
+  });
+
   // Local state for proxyConfig editing
   const [proxyConfig, setProxyConfig] = useState<ProxyConfig | undefined>(undefined);
   const [isRegenerateDialogOpen, setIsRegenerateDialogOpen] = useState(false);
+  const [showKey, setShowKey] = useState(false);
 
   // Sync config.proxy to local state when loaded
   useEffect(() => {
@@ -153,6 +167,27 @@ print(response.choices[0].message.content)`;
         <p className="text-muted-foreground mt-1">
           {t('proxy.description', 'Manage the local API proxy service.')}
         </p>
+
+        {/* Local Access Info Banner */}
+        {/* Local Access Info Banner */}
+        {proxyConfig?.enabled && (
+          <div className="mt-4 flex flex-col gap-2 rounded-md border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+            <div className="flex items-center gap-2">
+              <div className="font-semibold">{t('proxy.config.local_access', 'Local Access:')}</div>
+              <code className="rounded bg-blue-100 px-1.5 py-0.5 font-mono select-all dark:bg-blue-900/50">
+                http://{localIp || 'localhost'}:{proxyConfig.port}/v1
+              </code>
+            </div>
+            {!proxyConfig.api_key && (
+              <div className="flex items-center gap-2 text-xs font-medium text-amber-600 dark:text-amber-400">
+                {t(
+                  'proxy.config.no_token_warning',
+                  '⚠️ No API Key set. Service is open to the public network!',
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Service Control Card */}
@@ -235,10 +270,30 @@ print(response.choices[0].message.content)`;
           <div className="space-y-2">
             <Label>{t('proxy.config.api_key', 'API Key')}</Label>
             <div className="flex gap-2">
-              <Input value={proxyConfig.api_key || ''} readOnly className="font-mono text-sm" />
+              <div className="relative flex-1">
+                <Input
+                  value={proxyConfig.api_key || ''}
+                  readOnly
+                  type={showKey ? 'text' : 'password'}
+                  className="pr-10 font-mono text-sm"
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-0 right-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowKey(!showKey)}
+                  title={showKey ? t('proxy.config.hide_key') : t('proxy.config.show_key')}
+                >
+                  {showKey ? (
+                    <EyeOff className="text-muted-foreground h-4 w-4" />
+                  ) : (
+                    <Eye className="text-muted-foreground h-4 w-4" />
+                  )}
+                </Button>
+              </div>
               <Button
                 variant="outline"
-                size="sm"
+                size="icon"
                 onClick={() => navigator.clipboard.writeText(proxyConfig.api_key || '')}
               >
                 <Copy size={14} className="mr-1" />

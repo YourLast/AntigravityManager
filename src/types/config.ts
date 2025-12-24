@@ -8,7 +8,7 @@ export const UpstreamProxyConfigSchema = z.object({
 export const ProxyConfigSchema = z.object({
   enabled: z.boolean(), // 是否启用
   port: z.number(), // 监听端口
-  api_key: z.string(), // API 密钥
+  api_key: z.string(), // API 密钥 (Also used for Admin Mode auth)
   auto_start: z.boolean(), // 是否自动启动
   anthropic_mapping: z.record(z.string(), z.string()), // 映射表
   request_timeout: z.number().default(120), // 超时秒数

@@ -4,14 +4,20 @@ import { AppModule } from './app.module';
 import { logger } from '../utils/logger';
 import { TokenManagerService } from './modules/proxy/token-manager.service';
 
+import { ProxyConfig } from '../types/config';
+import { setServerConfig } from './server-config';
+
 let app: NestFastifyApplication | null = null;
 let currentPort: number = 0;
 
-export async function bootstrapNestServer(port: number = 8045): Promise<boolean> {
+export async function bootstrapNestServer(config: ProxyConfig): Promise<boolean> {
+  const port = config.port || 8045;
   if (app) {
     logger.info('NestJS server already running.');
     return true;
   }
+
+  setServerConfig(config);
 
   try {
     app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), {
