@@ -4,7 +4,13 @@
  */
 import { os } from '@orpc/server';
 import { z } from 'zod';
-import { startGateway, stopGateway, getGatewayStatus, generateApiKey } from './handlers';
+import {
+  startGateway,
+  stopGateway,
+  getGatewayStatus,
+  generateApiKey,
+  getQuotaMetrics,
+} from './handlers';
 
 export const gatewayRouter = os.prefix('/gateway').router({
   start: os
@@ -32,5 +38,10 @@ export const gatewayRouter = os.prefix('/gateway').router({
   generateKey: os.handler(async () => {
     const newKey = await generateApiKey();
     return { api_key: newKey };
+  }),
+
+  // 获取配额指标 (用于前端仪表盘)
+  getQuotaMetrics: os.handler(async () => {
+    return getQuotaMetrics();
   }),
 });

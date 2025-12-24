@@ -5,6 +5,13 @@ export const UpstreamProxyConfigSchema = z.object({
   url: z.string(),
 });
 
+export const RetryConfigSchema = z.object({
+  maxRetries: z.number().min(1).max(10).default(5), // 最大重试次数
+  initialDelayMs: z.number().min(100).max(5000).default(1000), // 初始延迟 (毫秒)
+  maxDelayMs: z.number().min(5000).max(60000).default(30000), // 最大延迟 (毫秒)
+  jitterFactor: z.number().min(0).max(1).default(0.3), // 抖动因子
+});
+
 export const ProxyConfigSchema = z.object({
   enabled: z.boolean(), // 是否启用
   port: z.number(), // 监听端口
@@ -13,6 +20,7 @@ export const ProxyConfigSchema = z.object({
   anthropic_mapping: z.record(z.string(), z.string()), // 映射表
   request_timeout: z.number().default(120), // 超时秒数
   upstream_proxy: UpstreamProxyConfigSchema,
+  retry: RetryConfigSchema.optional(), // 重试配置
 });
 
 export const AppConfigSchema = z.object({
@@ -27,6 +35,7 @@ export const AppConfigSchema = z.object({
 });
 
 export type UpstreamProxyConfig = z.infer<typeof UpstreamProxyConfigSchema>;
+export type RetryConfig = z.infer<typeof RetryConfigSchema>;
 export type ProxyConfig = z.infer<typeof ProxyConfigSchema>;
 export type AppConfig = z.infer<typeof AppConfigSchema>;
 

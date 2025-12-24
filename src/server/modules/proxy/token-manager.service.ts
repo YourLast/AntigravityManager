@@ -14,6 +14,46 @@ interface TokenData {
   session_id?: string;
 }
 
+/** 滑动窗口计数器 - 用于追踪 RPM */
+class SlidingWindowCounter {
+  private timestamps: number[] = [];
+  private readonly windowMs: number;
+
+  constructor(windowMs: number = 60000) {
+    // 默认 60 秒窗口
+    this.windowMs = windowMs;
+  }
+
+  /** 记录一次请求 */
+  record(): void {
+    this.timestamps.push(Date.now());
+    this.cleanup();
+  }
+
+  /** 获取当前窗口内的请求数 */
+  getCount(): number {
+    this.cleanup();
+    return this.timestamps.length;
+  }
+
+  /** 清理过期的时间戳 */
+  private cleanup(): void {
+    const cutoff = Date.now() - this.windowMs;
+    this.timestamps = this.timestamps.filter((ts) => ts > cutoff);
+  }
+}
+
+/** 配额指标 - 用于前端展示 */
+export interface AccountQuotaMetrics {
+  accountId: string;
+  email: string;
+  rpm: number; // 当前 RPM
+  isRateLimited: boolean;
+  cooldownUntil: number | null; // 冷却结束时间戳
+  quotaPercentage: number | null; // 来自 API 的配额百分比
+  resetTime: string | null; // 配额重置时间
+}
+
 @Injectable()
 export class TokenManagerService implements OnModuleInit {
   private readonly logger = new Logger(TokenManagerService.name);
@@ -22,6 +62,8 @@ export class TokenManagerService implements OnModuleInit {
   private tokens: Map<string, TokenData> = new Map();
   // Cooldown map for rate-limited accounts
   private cooldowns: Map<string, number> = new Map();
+  // RPM counters per account (sliding window)
+  private rpmCounters: Map<string, SlidingWindowCounter> = new Map();
 
   async onModuleInit() {
     // Load accounts on module initialization
@@ -198,5 +240,80 @@ export class TokenManagerService implements OnModuleInit {
    */
   getAccountCount(): number {
     return this.tokens.size;
+  }
+
+  /**
+   * 记录一次请求 (用于 RPM 追踪)
+   * @param accountId 账号 ID
+   */
+  recordRequest(accountId: string): void {
+    if (!this.rpmCounters.has(accountId)) {
+      this.rpmCounters.set(accountId, new SlidingWindowCounter());
+    }
+    this.rpmCounters.get(accountId)!.record();
+  }
+
+  /**
+   * 获取指定账号的当前 RPM
+   * @param accountId 账号 ID
+   */
+  getRpm(accountId: string): number {
+    const counter = this.rpmCounters.get(accountId);
+    return counter ? counter.getCount() : 0;
+  }
+
+  /**
+   * 检查账号是否应被跳过 (配额不足)
+   * 阈值: 如果 RPM 已达到估算限制的 80%, 跳过该账号
+   * @param accountId 账号 ID
+   * @param estimatedRpmLimit 估算的 RPM 限制 (默认 60)
+   */
+  shouldSkipAccount(accountId: string, estimatedRpmLimit: number = 60): boolean {
+    const rpm = this.getRpm(accountId);
+    const threshold = estimatedRpmLimit * 0.8;
+    return rpm >= threshold;
+  }
+
+  /**
+   * 获取所有账号的配额指标 (供前端仪表盘使用)
+   */
+  async getQuotaMetrics(): Promise<AccountQuotaMetrics[]> {
+    const metrics: AccountQuotaMetrics[] = [];
+    const accounts = await CloudAccountRepo.getAccounts();
+    const now = Date.now();
+
+    for (const account of accounts) {
+      const cooldownUntil = this.cooldowns.get(account.id) ?? null;
+      const isRateLimited = cooldownUntil !== null && cooldownUntil > now;
+
+      // 从 quota 对象获取平均配额百分比
+      let quotaPercentage: number | null = null;
+      let resetTime: string | null = null;
+
+      if (account.quota && account.quota.models) {
+        const modelQuotas = Object.values(account.quota.models);
+        if (modelQuotas.length > 0) {
+          quotaPercentage =
+            modelQuotas.reduce((sum, m) => sum + m.percentage, 0) / modelQuotas.length;
+        }
+        // 尝试获取第一个模型的 resetTime
+        const firstModel = modelQuotas[0];
+        if (firstModel && 'resetTime' in firstModel) {
+          resetTime = (firstModel as any).resetTime || null;
+        }
+      }
+
+      metrics.push({
+        accountId: account.id,
+        email: account.email,
+        rpm: this.getRpm(account.id),
+        isRateLimited,
+        cooldownUntil: isRateLimited ? cooldownUntil : null,
+        quotaPercentage,
+        resetTime,
+      });
+    }
+
+    return metrics;
   }
 }

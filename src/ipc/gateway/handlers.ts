@@ -53,3 +53,28 @@ export const generateApiKey = async (): Promise<string> => {
 
   return newKey;
 };
+
+/**
+ * Get quota metrics for all accounts (for dashboard)
+ * Returns RPM, rate limit status, and quota percentage for each account
+ */
+export const getQuotaMetrics = async () => {
+  // Import dynamically to avoid circular dependency issues with NestJS
+  const { getNestApp } = await import('../../server/main');
+  const app = getNestApp();
+
+  if (!app) {
+    return { metrics: [], serverRunning: false };
+  }
+
+  try {
+    const { TokenManagerService } =
+      await import('../../server/modules/proxy/token-manager.service');
+    const tokenManager = app.get(TokenManagerService);
+    const metrics = await tokenManager.getQuotaMetrics();
+    return { metrics, serverRunning: true };
+  } catch (e) {
+    console.error('Failed to get quota metrics:', e);
+    return { metrics: [], serverRunning: true, error: String(e) };
+  }
+};

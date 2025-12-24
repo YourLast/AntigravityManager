@@ -38,6 +38,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { QuotaDashboard } from '@/components/QuotaDashboard';
 
 function ProxyPage() {
   const { t } = useTranslation();
@@ -298,6 +299,9 @@ print(response.choices[0].message.content)`;
           </div>
         </CardContent>
       </Card>
+
+      {/* Quota Dashboard - 配额仪表盘 */}
+      {proxyConfig.enabled && <QuotaDashboard />}
 
       {/* Model Mapping Card */}
       <Card>

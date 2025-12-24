@@ -16,6 +16,13 @@ import {
   OpenAIChatResponse,
   GeminiCandidate,
 } from './interfaces/request-interfaces';
+import { serverConfig } from '../../server-config';
+import {
+  calculateBackoffDelay,
+  isRetryableError,
+  sleep,
+  DEFAULT_RETRY_CONFIG,
+} from '../../../utils/retry';
 
 @Injectable()
 export class ProxyService {
@@ -36,11 +43,12 @@ export class ProxyService {
       `Received Anthropic request for model: ${request.model} (Mapped: ${targetModel}, Stream: ${request.stream})`,
     );
 
-    // Retry loop
+    // Retry loop with exponential backoff
     let lastError: unknown = null;
-    const maxRetries = 3;
+    const retryConfig = serverConfig?.retry ?? DEFAULT_RETRY_CONFIG;
+    const maxRetries = retryConfig.maxRetries;
 
-    for (let i = 0; i < maxRetries; i++) {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
       const token = await this.tokenManager.getNextToken();
       if (!token) {
         throw new Error('No available accounts');
@@ -69,8 +77,18 @@ export class ProxyService {
         lastError = error;
         if (error instanceof Error) {
           this.logger.warn(`Anthropic Request failed: ${error.message}`);
-          if (this.shouldRetry(error.message)) {
+          if (isRetryableError(error)) {
             this.tokenManager.markAsRateLimited(token.email);
+
+            // Wait before retry with exponential backoff
+            if (attempt < maxRetries - 1) {
+              const delay = calculateBackoffDelay(attempt, retryConfig);
+              this.logger.log(`Retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})...`);
+              await sleep(delay);
+            }
+          } else {
+            // Non-retryable error, throw immediately
+            throw error;
           }
         }
       }
@@ -257,11 +275,12 @@ export class ProxyService {
       `Received request for model: ${request.model} (Mapped: ${targetModel}, Stream: ${request.stream})`,
     );
 
-    // Retry loop for account selection
+    // Retry loop with exponential backoff
     let lastError: unknown = null;
-    const maxRetries = 3;
+    const retryConfig = serverConfig?.retry ?? DEFAULT_RETRY_CONFIG;
+    const maxRetries = retryConfig.maxRetries;
 
-    for (let i = 0; i < maxRetries; i++) {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
       // 1. Get Token
       const token = await this.tokenManager.getNextToken();
       if (!token) {
@@ -279,6 +298,8 @@ export class ProxyService {
             geminiRequest,
             token.token.access_token,
           );
+          // Record successful request for RPM tracking
+          this.tokenManager.recordRequest(token.id);
           return this.processStreamResponse(stream, request.model);
         } else {
           const response = await this.geminiClient.generate(
@@ -286,6 +307,8 @@ export class ProxyService {
             geminiRequest,
             token.token.access_token,
           );
+          // Record successful request for RPM tracking
+          this.tokenManager.recordRequest(token.id);
           return this.convertGeminiToOpenAIResponse(response, request.model);
         }
       } catch (error) {
@@ -294,8 +317,18 @@ export class ProxyService {
           this.logger.warn(`Request failed with account ${token.email}: ${error.message}`);
 
           // Check for rate limit / auth errors
-          if (this.shouldRetry(error.message)) {
+          if (isRetryableError(error)) {
             this.tokenManager.markAsRateLimited(token.email);
+
+            // Wait before retry with exponential backoff
+            if (attempt < maxRetries - 1) {
+              const delay = calculateBackoffDelay(attempt, retryConfig);
+              this.logger.log(`Retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})...`);
+              await sleep(delay);
+            }
+          } else {
+            // Non-retryable error, throw immediately
+            throw error;
           }
         }
       }

@@ -51,6 +51,13 @@ export function isNestServerRunning(): boolean {
   return app !== null;
 }
 
+/**
+ * Get the NestJS app instance (for accessing services like TokenManager)
+ */
+export function getNestApp(): NestFastifyApplication | null {
+  return app;
+}
+
 export async function getNestServerStatus(): Promise<{
   running: boolean;
   port: number;
