@@ -7,6 +7,7 @@ import {
   Usage,
   GroundingMetadata,
 } from './types';
+import { decodeSignature } from './signature-utils';
 
 /**
  * Non-streaming response processor (Gemini -> Claude)
@@ -55,7 +56,7 @@ class NonStreamingProcessor {
   }
 
   private processPart(part: GeminiPart) {
-    const signature = part.thoughtSignature || null;
+    const signature = decodeSignature(part.thoughtSignature) || null;
 
     // 1. Handle FunctionCall
     if (part.functionCall) {

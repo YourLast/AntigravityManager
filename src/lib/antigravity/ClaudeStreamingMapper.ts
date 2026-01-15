@@ -1,5 +1,6 @@
-import { GeminiPart, Usage, UsageMetadata, GroundingMetadata } from './types';
+import { GeminiPart, Usage, UsageMetadata } from './types';
 import { SignatureStore } from './SignatureStore';
+import { decodeSignature } from './signature-utils';
 
 type BlockType = 'None' | 'Text' | 'Thinking' | 'Function';
 
@@ -42,6 +43,8 @@ export class StreamingState {
   // Web Search / Grounding buffers
   public webSearchQuery: string | null = null;
   public groundingChunks: any[] | null = null;
+
+  private parseErrorCount: number = 0;
 
   constructor() {}
 
@@ -242,6 +245,56 @@ export class StreamingState {
   public storeSignature(signature?: string) {
     this.signatures.store(signature);
   }
+  public handleParseError(rawData: string): string[] {
+    const chunks: string[] = [];
+    this.parseErrorCount++;
+
+    console.warn(
+      `[SSE-Parser] Parse error #${this.parseErrorCount}. Raw data length: ${rawData.length}`,
+    );
+
+    // Safely close current block
+    if (this.blockType !== 'None') {
+      chunks.push(...this.endBlock());
+    }
+
+    // Emit error event if too many errors
+    if (this.parseErrorCount > 3) {
+      console.error(
+        `[SSE-Parser] High error rate (${this.parseErrorCount} errors). Stream may be corrupted.`,
+      );
+      chunks.push(
+        this.emit('error', {
+          type: 'error',
+          error: {
+            type: 'network_error',
+            message: 'Unstable network connection. Please check your network or proxy settings.',
+            code: 'stream_decode_error',
+            details: {
+              error_count: this.parseErrorCount,
+              suggestion: 'Check network connection',
+            },
+          },
+        }),
+      );
+    }
+
+    return chunks;
+  }
+
+  /**
+   * Reset error state (call after recovery)
+   */
+  public resetErrorState(): void {
+    this.parseErrorCount = 0;
+  }
+
+  /**
+   * Get current error count (for monitoring)
+   */
+  public getErrorCount(): number {
+    return this.parseErrorCount;
+  }
 }
 
 /**
@@ -252,7 +305,7 @@ export class PartProcessor {
 
   public process(part: GeminiPart): string[] {
     const chunks: string[] = [];
-    const signature = part.thoughtSignature || undefined;
+    const signature = decodeSignature(part.thoughtSignature);
 
     // 1. Handle FunctionCall
     if (part.functionCall) {

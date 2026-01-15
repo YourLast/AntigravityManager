@@ -7,6 +7,11 @@ import { transformClaudeRequestIn } from '../../../lib/antigravity/ClaudeRequest
 import { transformResponse } from '../../../lib/antigravity/ClaudeResponseMapper';
 import { StreamingState, PartProcessor } from '../../../lib/antigravity/ClaudeStreamingMapper';
 import { ClaudeRequest } from '../../../lib/antigravity/types';
+import { calculateRetryDelay, sleep } from '../../../lib/antigravity/retry-utils';
+import {
+  classifyStreamError,
+  formatErrorForSSE,
+} from '../../../lib/antigravity/stream-error-utils';
 import {
   OpenAIChatRequest,
   AnthropicChatRequest,
@@ -45,6 +50,13 @@ export class ProxyService {
     const maxRetries = 3;
 
     for (let i = 0; i < maxRetries; i++) {
+      // Fix #6: Add jitter delay for retries (skip first attempt)
+      if (i > 0) {
+        const delay = calculateRetryDelay(i - 1);
+        this.logger.log(`Retry attempt ${i + 1}/${maxRetries}, waiting ${delay}ms (jittered)`);
+        await sleep(delay);
+      }
+
       const token = await this.tokenManager.getNextToken();
       if (!token) {
         throw new Error('No available accounts');
@@ -172,7 +184,11 @@ export class ProxyService {
       let lastFinishReason: string | undefined;
       let lastUsageMetadata: any | undefined;
 
+      // Fix #1: Track if we received any valid data
+      let receivedData = false;
+
       upstreamStream.on('data', (chunk: Buffer) => {
+        receivedData = true; // Mark that we got data
         buffer += decoder.decode(chunk, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
@@ -205,21 +221,40 @@ export class ProxyService {
               const chunks = processor.process(part as any);
               chunks.forEach((c) => subscriber.next(c));
             }
+
+            // Reset error state on successful parse
+            state.resetErrorState();
           } catch (e) {
+            // Fix #3: Use handleParseError for graceful degradation
             this.logger.error('Stream parse error', e);
+            const errorChunks = state.handleParseError(dataStr);
+            errorChunks.forEach((c) => subscriber.next(c));
           }
         }
       });
 
       upstreamStream.on('end', () => {
+        // Fix #1: Check for empty stream
+        if (!receivedData) {
+          this.logger.warn('Empty response stream detected');
+          subscriber.error(new Error('Empty response stream'));
+          return;
+        }
+
         const finishChunks = state.emitFinish(lastFinishReason, lastUsageMetadata);
         finishChunks.forEach((c) => subscriber.next(c));
         subscriber.complete();
       });
 
       upstreamStream.on('error', (err: any) => {
-        // Convert to clean Error to avoid circular reference issues (socket objects)
-        const cleanError = err instanceof Error ? new Error(err.message) : new Error(String(err));
+        // Fix #2: Classify error and send friendly message
+        const cleanError = err instanceof Error ? err : new Error(String(err));
+        const { type, message } = classifyStreamError(cleanError);
+
+        this.logger.error(`Stream error: ${type} - ${cleanError.message}`);
+
+        // Send SSE error event before closing
+        subscriber.next(formatErrorForSSE(type, message));
         subscriber.error(cleanError);
       });
     });
