@@ -111,12 +111,27 @@ export class QuotaService {
             console.log(`   - ${name}`);
             if (info.quotaInfo) {
               const fraction = info.quotaInfo.remainingFraction ?? 0;
-              const percentage = Math.floor(fraction * 100);
+              // Keep 1 decimal place of precision for small percentages (e.g. 19.4),
+              // but we store it as a number. We'll format it in UI.
+              // Actually, let's store it as is (0-100 scale) with decimals.
+              const percentage = fraction * 100;
               const resetTime = info.quotaInfo.resetTime || '';
+
+              // Extract usage and limit if available
+              // Note: The API often returns strings for these large numbers
+              let usage: number | undefined;
+              let limit: number | undefined;
+
+              if (info.quotaInfo.usage) {
+                usage = parseInt(info.quotaInfo.usage, 10);
+              }
+              if (info.quotaInfo.limit) {
+                limit = parseInt(info.quotaInfo.limit, 10);
+              }
 
               // Only save models we care about
               if (name.includes('gemini') || name.includes('claude')) {
-                quotaData.models[name] = { percentage, resetTime };
+                quotaData.models[name] = { percentage, usage, limit, resetTime };
               }
             }
           }

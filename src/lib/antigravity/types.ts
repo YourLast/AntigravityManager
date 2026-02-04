@@ -307,6 +307,8 @@ export interface QuotaData {
 
 export interface ModelQuotaInfo {
   percentage: number;
+  usage?: number;
+  limit?: number;
   resetTime: string;
 }
 
@@ -324,7 +326,17 @@ export interface Tier {
 }
 
 export interface QuotaApiResponse {
-  models: Record<string, { quotaInfo?: { remainingFraction?: number; resetTime?: string } }>;
+  models: Record<
+    string,
+    {
+      quotaInfo?: {
+        remainingFraction?: number;
+        usage?: string; // Often strings in Google APIs ("1000")
+        limit?: string; // "5000"
+        resetTime?: string;
+      };
+    }
+  >;
 }
 
 // --- Response Models ---

@@ -1,3 +1,4 @@
+import React from 'react';
 import { CloudAccount } from '@/types/cloudAccount';
 import { Button } from '@/components/ui/button';
 import {
@@ -108,6 +109,7 @@ export function CloudAccountCard({
     return `${t('cloud.card.resetTime')}: ${resetDate.toLocaleString()}`;
   };
 
+  const [showAbsolute, setShowAbsolute] = React.useState(false);
   const modelQuotas = Object.entries(account.quota?.models || {});
 
   return (
@@ -222,32 +224,17 @@ export function CloudAccountCard({
         <div className="space-y-2">
           {modelQuotas.length > 0 ? (
             modelQuotas.map(([modelName, info]) => (
-              <div
+              <QuotaRow
                 key={modelName}
-                className="hover:bg-muted/40 grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 rounded-md px-1.5 py-1 text-sm transition-colors"
-              >
-                <span className="text-muted-foreground min-w-0 truncate" title={modelName}>
-                  {modelName.replace('models/', '')}
-                </span>
-                <div className="flex flex-col items-end gap-1">
-                  <span
-                    className="text-muted-foreground text-[10px] leading-none"
-                    title={getResetTimeTitle(info.resetTime)}
-                  >
-                    {getResetTimeLabel(info.resetTime)}
-                  </span>
-                  <div className="flex items-baseline gap-1.5">
-                    <span
-                      className={`font-mono leading-none font-bold ${getQuotaColor(info.percentage)}`}
-                    >
-                      {info.percentage}%
-                    </span>
-                    <span className="text-muted-foreground text-[10px]">
-                      {t('cloud.card.left')}
-                    </span>
-                  </div>
-                </div>
-              </div>
+                modelName={modelName}
+                info={info}
+                showAbsolute={showAbsolute}
+                onToggle={() => setShowAbsolute(!showAbsolute)}
+                t={t}
+                getQuotaColor={getQuotaColor}
+                getResetTimeTitle={getResetTimeTitle}
+                getResetTimeLabel={getResetTimeLabel}
+              />
             ))
           ) : (
             <div className="text-muted-foreground flex flex-col items-center justify-center py-4">
@@ -265,5 +252,75 @@ export function CloudAccountCard({
         </span>
       </CardFooter>
     </Card>
+  );
+}
+
+function formatLargeNumber(num?: number) {
+  if (num === undefined) return 'N/A';
+  if (num >= 1000000) {
+    return (num / 1000000).toFixed(1) + 'M';
+  }
+  if (num >= 1000) {
+    return (num / 1000).toFixed(0) + 'k';
+  }
+  return num.toString();
+}
+
+interface QuotaRowProps {
+  modelName: string;
+  info: NonNullable<CloudAccount['quota']>['models'][string];
+  showAbsolute: boolean;
+  onToggle: () => void;
+  t: (key: string) => string;
+  getQuotaColor: (percentage: number) => string;
+  getResetTimeTitle: (resetTime?: string) => string | undefined;
+  getResetTimeLabel: (resetTime?: string) => string;
+}
+
+function QuotaRow({
+  modelName,
+  info,
+  showAbsolute,
+  onToggle,
+  t,
+  getQuotaColor,
+  getResetTimeTitle,
+  getResetTimeLabel,
+}: QuotaRowProps) {
+  return (
+    <div className="hover:bg-muted/40 grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 rounded-md px-1.5 py-1 text-sm transition-colors">
+      <span className="text-muted-foreground min-w-0 truncate" title={modelName}>
+        {modelName.replace('models/', '')}
+      </span>
+      <div className="flex flex-col items-end gap-1">
+        <span
+          className="text-muted-foreground text-[10px] leading-none"
+          title={getResetTimeTitle(info.resetTime)}
+        >
+          {getResetTimeLabel(info.resetTime)}
+        </span>
+        <div
+          className="flex cursor-pointer items-baseline gap-1.5 hover:opacity-80"
+          onClick={onToggle}
+          role="button"
+          tabIndex={0}
+        >
+          {showAbsolute ? (
+            <span className="font-mono text-xs font-bold">
+              {formatLargeNumber(info.usage)} / {formatLargeNumber(info.limit)}
+            </span>
+          ) : (
+            <>
+              <span
+                className={`font-mono leading-none font-bold ${getQuotaColor(info.percentage)}`}
+              >
+                {info.percentage.toFixed(1).replace(/\.0$/, '')}%
+              </span>
+              <span className="text-muted-foreground text-[10px]">{t('cloud.card.left')}</span>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

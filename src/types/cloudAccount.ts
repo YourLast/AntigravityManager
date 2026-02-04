@@ -16,6 +16,8 @@ export interface CloudQuotaData {
     string,
     {
       percentage: number;
+      usage?: number;
+      limit?: number;
       resetTime: string;
     }
   >;
@@ -52,6 +54,8 @@ export const CloudQuotaDataSchema = z.object({
     z.string(),
     z.object({
       percentage: z.number(),
+      usage: z.number().optional(),
+      limit: z.number().optional(),
       resetTime: z.string(),
     }),
   ),
