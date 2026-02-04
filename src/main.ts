@@ -1,13 +1,21 @@
 import './instrument'; // MUST be the first import to ensure Sentry initializes before app ready
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, dialog, shell } from 'electron';
+import type { MessageBoxOptions } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import squirrelStartup from 'electron-squirrel-startup';
 
 import { ipcMain } from 'electron/main';
 import { ipcContext } from '@/ipc/context';
 import { IPC_CHANNELS } from './constants';
 import { updateElectronApp, UpdateSourceType } from 'update-electron-app';
 import { logger } from './utils/logger';
+import {
+  getExpectedInstallRoot,
+  getInstallNoticeText,
+  isRunningFromExpectedInstallDir as isRunningFromExpectedInstallDirUtil,
+  resolveInstallNoticeLanguage,
+} from './utils/installNotice';
 import { CloudAccountRepo } from './ipc/database/cloudHandler';
 import { initDatabase } from './ipc/database/handler';
 import { CloudMonitorService } from './services/CloudMonitorService';
@@ -58,6 +66,11 @@ ipcMain.on(IPC_CHANNELS.CHANGE_LANGUAGE, (event, lang) => {
 
 app.disableHardwareAcceleration();
 
+if (squirrelStartup) {
+  app.quit();
+  process.exit(0);
+}
+
 const inDevelopment = process.env.NODE_ENV === 'development';
 
 // Keep a global reference of the window object, if you don't, the window will
@@ -67,6 +80,62 @@ let globalMainWindow: BrowserWindow | null = null;
 let isQuitting = false;
 let startupConfig: AppConfig | null = null;
 let shouldStartHidden = false;
+let hasShownInstallNotice = false;
+
+function isRunningFromExpectedInstallDir() {
+  return isRunningFromExpectedInstallDirUtil({
+    platform: process.platform,
+    isPackaged: app.isPackaged,
+    localAppData: process.env.LOCALAPPDATA,
+    appName: app.getName(),
+    execPath: process.execPath,
+  });
+}
+
+function showWindowsInstallNoticeIfNeeded() {
+  if (hasShownInstallNotice) {
+    return;
+  }
+
+  if (isRunningFromExpectedInstallDir()) {
+    return;
+  }
+
+  const expectedRoot = getExpectedInstallRoot({
+    platform: process.platform,
+    localAppData: process.env.LOCALAPPDATA,
+    appName: app.getName(),
+  });
+  if (!expectedRoot) {
+    return;
+  }
+
+  hasShownInstallNotice = true;
+  const language = resolveInstallNoticeLanguage({
+    configLanguage: startupConfig?.language,
+    locale: app.getLocale(),
+  });
+  const text = getInstallNoticeText(language);
+
+  const options: MessageBoxOptions = {
+    type: 'info',
+    title: text.title,
+    message: text.message,
+    detail: `${text.detailPrefix}${expectedRoot}`,
+    buttons: [...text.buttons],
+    defaultId: 1,
+  };
+
+  const showPromise = globalMainWindow
+    ? dialog.showMessageBox(globalMainWindow, options)
+    : dialog.showMessageBox(options);
+
+  showPromise.then(({ response }) => {
+    if (response === 0) {
+      shell.openPath(expectedRoot);
+    }
+  });
+}
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
@@ -154,6 +223,7 @@ function createWindow({ startHidden }: { startHidden: boolean }) {
   }
 
   logger.info('Window created');
+  showWindowsInstallNoticeIfNeeded();
 
   mainWindow.on('close', (event) => {
     if (!isQuitting) {
