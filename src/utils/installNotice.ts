@@ -70,6 +70,14 @@ function getPathApi(platform: string) {
   return path;
 }
 
+function normalizeWindowsInstallDirName(appName: string) {
+  return appName
+    .trim()
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toLowerCase();
+}
+
 export function getExpectedInstallRoot({
   platform,
   localAppData,
@@ -88,7 +96,8 @@ export function getExpectedInstallRoot({
   }
 
   const pathApi = getPathApi(platform);
-  return pathApi.resolve(pathApi.join(localAppData, appName));
+  const installDirName = normalizeWindowsInstallDirName(appName);
+  return pathApi.resolve(pathApi.join(localAppData, installDirName));
 }
 
 export function isRunningFromExpectedInstallDir({
